@@ -4,7 +4,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -30,7 +29,6 @@ fun MainScreen(
     onAddStock: (Stock) -> Unit,
     onDeleteStock: (Stock) -> Unit,
     onStockClick: (Stock) -> Unit,
-    onNavigateToEmailConfig: () -> Unit,
     onNavigateToApiKey: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -43,12 +41,6 @@ fun MainScreen(
                         Icon(
                             imageVector = Icons.Default.Key,
                             contentDescription = "API Key 管理"
-                        )
-                    }
-                    IconButton(onClick = onNavigateToEmailConfig) {
-                        Icon(
-                            imageVector = Icons.Default.Email,
-                            contentDescription = stringResource(R.string.email_config)
                         )
                     }
                 }

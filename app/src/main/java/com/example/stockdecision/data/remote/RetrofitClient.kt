@@ -24,11 +24,21 @@ object RetrofitClient {
         .writeTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
         .build()
     
-    private val retrofit = Retrofit.Builder()
+    // Alpha Vantage API (for historical data)
+    private val alphaVantageRetrofit = Retrofit.Builder()
         .baseUrl(StockApiService.BASE_URL)
         .client(okHttpClient)
         .addConverterFactory(GsonConverterFactory.create())
         .build()
     
-    val stockApiService: StockApiService = retrofit.create(StockApiService::class.java)
+    // Cloud API (for stock monitoring)
+    private val cloudRetrofit = Retrofit.Builder()
+        .baseUrl(CloudApiService.BASE_URL)
+        .client(okHttpClient)
+        .addConverterFactory(GsonConverterFactory.create())
+        .build()
+    
+    val stockApiService: StockApiService = alphaVantageRetrofit.create(StockApiService::class.java)
+    
+    val cloudApiService: CloudApiService = cloudRetrofit.create(CloudApiService::class.java)
 }

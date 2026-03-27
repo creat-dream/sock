@@ -6,22 +6,20 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
 import com.example.stockdecision.data.model.ApiKeyConfig
-import com.example.stockdecision.data.model.EmailConfig
 import com.example.stockdecision.data.model.Stock
 
 /**
  * Room database for the stock decision app
  */
 @Database(
-    entities = [Stock::class, EmailConfig::class, ApiKeyConfig::class],
-    version = 2,
+    entities = [Stock::class, ApiKeyConfig::class],
+    version = 3,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
 abstract class StockDatabase : RoomDatabase() {
     
     abstract fun stockDao(): StockDao
-    abstract fun emailConfigDao(): EmailConfigDao
     abstract fun apiKeyConfigDao(): ApiKeyConfigDao
     
     companion object {

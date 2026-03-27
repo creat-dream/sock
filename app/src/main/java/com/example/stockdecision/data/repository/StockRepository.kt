@@ -1,6 +1,8 @@
 package com.example.stockdecision.data.repository
 
 import android.content.Context
+import android.content.SharedPreferences
+import android.util.Log
 import com.example.stockdecision.data.local.StockDao
 import com.example.stockdecision.data.local.StockDatabase
 import com.example.stockdecision.data.model.HistoricalPrice
@@ -19,13 +21,19 @@ import java.util.concurrent.TimeUnit
 
 /**
  * Repository for stock data operations
- * Handles both local database and remote API calls
+ * Handles both local database and remote cloud API calls
  */
 class StockRepository(
     private val stockDao: StockDao,
     private val context: Context
 ) {
     private val apiService = RetrofitClient.stockApiService
+    private val cloudRepository = CloudStockRepository(context)
+    
+    // Shared preferences for storing cloud stock ID mappings
+    private val prefs: SharedPreferences = context.getSharedPreferences(
+        "stock_cloud_mapping", Context.MODE_PRIVATE
+    )
     
     // Get API Key from database dynamically
     private suspend fun getApiKey(): String? {
@@ -39,6 +47,38 @@ class StockRepository(
     
     // Date formatter for API responses
     private val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+    
+    companion object {
+        private const val TAG = "StockRepository"
+    }
+    
+    /**
+     * Get cloud stock ID for local stock
+     */
+    fun getCloudStockId(localId: Long): String? {
+        return prefs.getString("cloud_id_$localId", null)
+    }
+    
+    /**
+     * Save cloud stock ID mapping
+     */
+    private fun saveCloudStockId(localId: Long, cloudId: String) {
+        prefs.edit().putString("cloud_id_$localId", cloudId).apply()
+    }
+    
+    /**
+     * Remove cloud stock ID mapping
+     */
+    private fun removeCloudStockId(localId: Long) {
+        prefs.edit().remove("cloud_id_$localId").apply()
+    }
+    
+    /**
+     * Initialize cloud connection
+     */
+    suspend fun initializeCloud(): Result<String> {
+        return cloudRepository.initializeUser()
+    }
     
     /**
      * Get all stocks as Flow
@@ -56,7 +96,7 @@ class StockRepository(
     suspend fun getActiveStocksSync(): List<Stock> = stockDao.getActiveStocksSync()
     
     /**
-     * Add a new stock to monitor
+     * Add a new stock to monitor (local + cloud)
      */
     suspend fun addStock(stock: Stock): Result<Long> = withContext(Dispatchers.IO) {
         try {
@@ -64,32 +104,105 @@ class StockRepository(
             if (stockDao.isStockBeingMonitored(stock.symbol)) {
                 return@withContext Result.failure(Exception("该股票已在监控列表中"))
             }
-            val id = stockDao.insertStock(stock)
-            Result.success(id)
+            
+            // Add to local database first
+            val localId = stockDao.insertStock(stock)
+            
+            // Sync to cloud
+            try {
+                val cloudResult = cloudRepository.addStock(stock)
+                if (cloudResult.isSuccess) {
+                    saveCloudStockId(localId, cloudResult.getOrThrow())
+                    Log.d(TAG, "Stock synced to cloud: localId=$localId")
+                } else {
+                    Log.w(TAG, "Failed to sync stock to cloud: ${cloudResult.exceptionOrNull()?.message}")
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Cloud sync failed, stock saved locally only", e)
+            }
+            
+            Result.success(localId)
         } catch (e: Exception) {
             Result.failure(e)
         }
     }
     
     /**
-     * Delete a stock
+     * Delete a stock (local + cloud)
      */
     suspend fun deleteStock(stock: Stock) = withContext(Dispatchers.IO) {
+        // Delete from cloud first
+        val cloudId = getCloudStockId(stock.id)
+        if (cloudId != null) {
+            try {
+                cloudRepository.deleteStock(cloudId)
+                removeCloudStockId(stock.id)
+                Log.d(TAG, "Stock deleted from cloud: $cloudId")
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to delete stock from cloud", e)
+            }
+        }
+        
+        // Delete from local database
         stockDao.deleteStock(stock)
     }
     
     /**
-     * Delete a stock by ID
+     * Delete a stock by ID (local + cloud)
      */
     suspend fun deleteStockById(id: Long) = withContext(Dispatchers.IO) {
+        // Delete from cloud first
+        val cloudId = getCloudStockId(id)
+        if (cloudId != null) {
+            try {
+                cloudRepository.deleteStock(cloudId)
+                removeCloudStockId(id)
+                Log.d(TAG, "Stock deleted from cloud: $cloudId")
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to delete stock from cloud", e)
+            }
+        }
+        
+        // Delete from local database
         stockDao.deleteStockById(id)
     }
     
     /**
-     * Mark a stock as triggered
+     * Mark a stock as triggered (local only - cloud is updated by server)
      */
     suspend fun markAsTriggered(id: Long) = withContext(Dispatchers.IO) {
         stockDao.markAsTriggered(id)
+        // Cloud is updated by the monitoring server when it sends the FCM notification
+    }
+    
+    /**
+     * Sync all local stocks to cloud
+     * Call this when app starts or when user pulls to refresh
+     */
+    suspend fun syncStocksToCloud(): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val localStocks = stockDao.getActiveStocksSync()
+            val cloudIdMap = localStocks.associate { it.id to getCloudStockId(it.id) }
+            
+            cloudRepository.syncStocks(localStocks, cloudIdMap)
+            
+            // Update mappings for newly synced stocks
+            val cloudStocksResult = cloudRepository.getStocks()
+            if (cloudStocksResult.isSuccess) {
+                val cloudStocks = cloudStocksResult.getOrThrow()
+                for (cloudStock in cloudStocks) {
+                    val localStock = localStocks.find { it.symbol == cloudStock.symbol }
+                    if (localStock != null && getCloudStockId(localStock.id) == null) {
+                        saveCloudStockId(localStock.id, cloudStock.id)
+                    }
+                }
+            }
+            
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to sync stocks to cloud", e)
+            Result.failure(e)
+        }
     }
     
     /**

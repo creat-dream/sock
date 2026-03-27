@@ -20,13 +20,10 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.example.stockdecision.data.model.Stock
 import com.example.stockdecision.ui.screens.ApiKeyScreen
-import com.example.stockdecision.ui.screens.EmailConfigScreen
 import com.example.stockdecision.ui.screens.MainScreen
 import com.example.stockdecision.ui.screens.StockDetailScreen
-import com.example.stockdecision.ui.screens.TestResult
 import com.example.stockdecision.ui.theme.StockDecisionTheme
 import com.example.stockdecision.ui.viewmodel.ApiKeyViewModel
-import com.example.stockdecision.ui.viewmodel.EmailConfigViewModel
 import com.example.stockdecision.ui.viewmodel.StockViewModel
 
 /**
@@ -35,7 +32,6 @@ import com.example.stockdecision.ui.viewmodel.StockViewModel
 class MainActivity : ComponentActivity() {
     
     private val stockViewModel: StockViewModel by viewModels()
-    private val emailConfigViewModel: EmailConfigViewModel by viewModels()
     private val apiKeyViewModel: ApiKeyViewModel by viewModels()
     
     private val requestPermissionLauncher = registerForActivityResult(
@@ -74,7 +70,7 @@ class MainActivity : ComponentActivity() {
                     StockDecisionApp(
                         navController = navController,
                         stockViewModel = stockViewModel,
-                        emailConfigViewModel = emailConfigViewModel
+                        apiKeyViewModel = apiKeyViewModel
                     )
                 }
             }
@@ -89,13 +85,11 @@ class MainActivity : ComponentActivity() {
 fun StockDecisionApp(
     navController: NavHostController,
     stockViewModel: StockViewModel,
-    emailConfigViewModel: EmailConfigViewModel,
     apiKeyViewModel: ApiKeyViewModel
 ) {
     val stockUiState by stockViewModel.uiState.collectAsState()
     val stockDetailUiState by stockViewModel.detailUiState.collectAsState()
     val currentPrices by stockViewModel.currentPrices.collectAsState()
-    val emailConfigUiState by emailConfigViewModel.uiState.collectAsState()
     val apiKeyUiState by apiKeyViewModel.uiState.collectAsState()
     
     var selectedStock by remember { mutableStateOf<Stock?>(null) }
@@ -119,9 +113,6 @@ fun StockDecisionApp(
                     stockViewModel.loadStockDetail(stock)
                     navController.navigate("detail")
                 },
-                onNavigateToEmailConfig = {
-                    navController.navigate("email_config")
-                },
                 onNavigateToApiKey = {
                     navController.navigate("api_key")
                 }
@@ -141,33 +132,6 @@ fun StockDecisionApp(
                         navController.popBackStack()
                     }
                 )
-            }
-        }
-        
-        composable("email_config") {
-            EmailConfigScreen(
-                config = emailConfigUiState.config,
-                onSave = { config ->
-                    emailConfigViewModel.saveConfig(config)
-                },
-                onTest = { config ->
-                    emailConfigViewModel.testConfig(config)
-                },
-                onBack = {
-                    navController.popBackStack()
-                },
-                isLoading = emailConfigUiState.isLoading,
-                testResult = emailConfigUiState.testResult?.let {
-                    TestResult(it.success, it.message)
-                }
-            )
-            
-            // Handle save success
-            LaunchedEffect(emailConfigUiState.saveSuccess) {
-                if (emailConfigUiState.saveSuccess) {
-                    emailConfigViewModel.resetSaveSuccess()
-                    navController.popBackStack()
-                }
             }
         }
         
